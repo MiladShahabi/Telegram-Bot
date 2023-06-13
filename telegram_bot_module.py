@@ -10,6 +10,8 @@ ADMIN_USER_ID: Final = 5355774833  # Admin's user ID
 ASKING_EMAIL = "ASKING_EMAIL"
 CONFIRM_EMAIL = "CONFIRM_EMAIL"
 SENDING_MESSAGE = "SENDING_MESSAGE"
+CANCEL_PENDING = "CANCEL_PENDING"
+CONTACTING_ADMIN = "CONTACTING_ADMIN"
 
 user_states = {}
 
@@ -53,9 +55,30 @@ def start_commands(message):
 
     bot.send_message(message.chat.id, 'Please check the box below to indicate that you have read and agree to all the Terms and Conditions mentioned above:', reply_markup=keyboard)
 
+@bot.message_handler(commands=['cancel'])
+def cancel_commands(message):
+    keyboard = InlineKeyboardMarkup()
+    yes_button = InlineKeyboardButton('Yes', callback_data="confirm_cancel")
+    no_button = InlineKeyboardButton('No', callback_data="deny_cancel")
+    keyboard.row(yes_button, no_button)
+    
+    bot.send_message(
+        message.chat.id,
+        'Are you sure you want to cancel your appointment booking request?',
+        reply_markup=keyboard
+    )
+
 @bot.message_handler(commands=['help'])
 def help_commands(message):
     bot.reply_to(message, 'I am a GetMyTermin bot. Please specify your Termin')
+
+@bot.message_handler(commands=['contact_us'])
+def contact_us_commands(message):
+    user_states[message.chat.id] = {
+        "state": CONTACTING_ADMIN, 
+        "message": None,
+    }
+    bot.send_message(message.chat.id, 'Please type your message:')
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_button_press(call):
@@ -92,6 +115,22 @@ def handle_button_press(call):
         bot.send_message(call.message.chat.id, 'Please enter your email again:')
         user_states[call.message.chat.id]["state"] = ASKING_EMAIL
         bot.answer_callback_query(callback_query_id=call.id)
+    elif call.data == "confirm_cancel":
+        user_id = call.message.chat.id
+        user_states[user_id] = {
+            "state": None,
+            "email": None,
+        }
+        bot.send_message(user_id, 'Your appointment booking request has been cancelled successfully.')
+
+        if user_id == ADMIN_USER_ID:
+            bot.send_message(ADMIN_USER_ID, f'The admin has cancelled the appointment booking request.')
+        else:
+            bot.send_message(ADMIN_USER_ID, f'User with ID {user_id} has cancelled their appointment booking request.')
+
+    elif call.data == "deny_cancel":
+        user_id = call.message.chat.id
+        bot.send_message(user_id, 'Continuing with your appointment booking request.')
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
@@ -109,6 +148,13 @@ def handle_message(message):
         bot.send_message(to_user_id, message.text)
         bot.reply_to(message, f"Message sent to user {to_user_id}")
         del user_states[chat_id]
+    elif user_states.get(chat_id, {}).get("state") == CONTACTING_ADMIN:
+        user_states[chat_id]["message"] = message.text
+        bot.send_message(chat_id, 'Your message has been received and will be replied as soon as possible.')
+        keyboard = InlineKeyboardMarkup()
+        button = InlineKeyboardButton('Reply to this user ✏️', callback_data=f"send_msg_to_{chat_id}")
+        keyboard.row(button)
+        bot.send_message(chat_id=ADMIN_USER_ID, text=f'New message from user {chat_id}: {message.text}', reply_markup=keyboard)
 
 @bot.polling()
 def polling():
@@ -116,4 +162,4 @@ def polling():
     bot.polling()
 
 if __name__ == '__main__':
-    polling()  
+    polling()
