@@ -25,7 +25,7 @@ bot.set_my_commands(
     commands=[
         telebot.types.BotCommand("start", "Book an Appointment"),
         telebot.types.BotCommand("cancel", "Cancel the Appointment"),
-        telebot.types.BotCommand("help", "Guide to use the Bot"),
+        telebot.types.BotCommand("payment", "PayPal"),
         telebot.types.BotCommand("contact_us", "Tap to contact the Admin"),
     ],
     scope=telebot.types.BotCommandScopeAllPrivateChats()  # use for all private chats
@@ -38,15 +38,25 @@ def start_commands(message):
         "email": None,
     }
 
+    user = message.chat
+    log_text = f'User {user.id}, first name: {user.first_name}, last name: {user.last_name}, username: {user.username}'
+    
+    # Log the user's information to 'user_data.log'
+    logging.info(log_text)
+    
+    # Send the user's information to the admin
+    bot.send_message(chat_id=ADMIN_USER_ID, text=log_text)
+
     bot.send_message(
         message.chat.id,
         '''Terms and Conditions:
 
-1. After booking an appointment, you are required to pay a 75 Euro fee within 24 hours. Failure to do so will result in the cancellation of your appointment.
+1. After booking an appointment, you are required to pay a 30 Euro fee within 24 hours. Failure to do so will result in the cancellation of your appointment.
 
 2. Our algorithms search for available free time slots only. While you cannot request a specific date, you can suggest your preferred date, and we will prioritize it if available.
 
 3. You are responsible for entering accurate information and verifying it before submitting. Any issues that arise due to incorrect information entered are your sole responsibility.'''
+    
     )
 
     keyboard = InlineKeyboardMarkup()
@@ -68,9 +78,13 @@ def cancel_commands(message):
         reply_markup=keyboard
     )
 
-@bot.message_handler(commands=['help'])
-def help_commands(message):
-    bot.reply_to(message, 'I am a GetMyTermin bot. Please specify your Termin')
+@bot.message_handler(commands=['payment'])
+def payment_commands(message):
+
+    keyboard = InlineKeyboardMarkup()
+    button = InlineKeyboardButton('PayPal', url="https://www.paypal.me/GetMyTermin")
+    keyboard.row(button)
+    bot.send_message(message.chat.id, text='Please use this button to pay the 30 euros fee.', reply_markup=keyboard)
 
 @bot.message_handler(commands=['contact_us'])
 def contact_us_commands(message):
@@ -99,6 +113,10 @@ def handle_button_press(call):
         user = call.message.chat.id
         log_text = f'User {user}, email: {email}'
 
+        # Add this line to log the user data into user_data.log file
+        logging.info(f'User Data: User ID = {user}, Email = {email}')
+
+
         keyboard = InlineKeyboardMarkup()
         button = InlineKeyboardButton('Reply to this user ✏️', callback_data=f"send_msg_to_{user}")
         keyboard.row(button)
@@ -106,9 +124,10 @@ def handle_button_press(call):
         bot.send_message(chat_id=ADMIN_USER_ID, text=log_text, reply_markup=keyboard)
 
         keyboard = InlineKeyboardMarkup()
-        button = InlineKeyboardButton('Go to Form 📝', url="https://online.forms.app/getmyterminde/registration-form")
-        keyboard.row(button)
-
+        button1 = InlineKeyboardButton('Go to English 🇬🇧 Form 📝', url="https://online.forms.app/getmyterminde/registration-form")
+        button2 = InlineKeyboardButton('Go to Deutsch 🇩🇪 Form 📝', url="https://view.forms.app/getmyterminde/anmeldeformular")
+        keyboard.row(button1)
+        keyboard.row(button2)
         bot.send_message(chat_id=call.message.chat.id, text='Now, press this button to go to the appointment details form and provide the required information', reply_markup=keyboard)
         bot.answer_callback_query(callback_query_id=call.id)
     elif call.data == "edit_email" and user_states.get(call.message.chat.id, {}).get("state") == CONFIRM_EMAIL:
@@ -146,20 +165,23 @@ def handle_message(message):
     elif user_states.get(chat_id, {}).get("state") == SENDING_MESSAGE:
         to_user_id = user_states[chat_id].get("to_user_id")
         bot.send_message(to_user_id, message.text)
-        bot.reply_to(message, f"Message sent to user {to_user_id}")
-        del user_states[chat_id]
+        user_states[chat_id]["state"] = None
+        bot.send_message(chat_id, 'Your message has been sent.')
     elif user_states.get(chat_id, {}).get("state") == CONTACTING_ADMIN:
         user_states[chat_id]["message"] = message.text
-        bot.send_message(chat_id, 'Your message has been received and will be replied as soon as possible.')
+        user_states[chat_id]["state"] = None
         keyboard = InlineKeyboardMarkup()
         button = InlineKeyboardButton('Reply to this user ✏️', callback_data=f"send_msg_to_{chat_id}")
         keyboard.row(button)
-        bot.send_message(chat_id=ADMIN_USER_ID, text=f'New message from user {chat_id}: {message.text}', reply_markup=keyboard)
+        bot.send_message(ADMIN_USER_ID, f'User with ID {chat_id} sent this message:\n\n{message.text}', reply_markup=keyboard)
+        bot.send_message(chat_id, 'Your message has been received and will be replied as soon as possible.')
+    else:  # This is where we handle unrecognizable messages
+        bot.send_message(chat_id, "This message is not recognizable. To communicate with the admin, please select the /contact_us option from the bot's menu.")
+        
+        user = message.chat
+        log_text = f'Unrecognized message from User {user.id}, first name: {user.first_name}, last name: {user.last_name}, username: {user.username}, message: {message.text}'
 
-@bot.polling()
-def polling():
-    print('Starting bot...')
-    bot.polling()
+        # Log the unrecognized message to 'user_data.log'
+        logging.info(log_text)
 
-if __name__ == '__main__':
-    polling()
+bot.polling(none_stop=True, interval=0, timeout=20)

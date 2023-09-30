@@ -3,8 +3,8 @@ from typing import Final
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-TOKEN: Final = '6114910026:AAGGPogroG1BvkHA3LOTab_0EzBqqi3JQYM'
-BOT_USERNAME: Final = '@GetMyTermin_bot'
+TOKEN: Final = '5796108934:AAFH4J0IFNo5eGSiiyhqsh7oB93UHaY3iUY'
+BOT_USERNAME: Final = '@MyDreams20bot'
 ADMIN_USER_ID: Final = 5355774833  # Admin's user ID
 
 ASKING_EMAIL = "ASKING_EMAIL"
@@ -15,7 +15,11 @@ CONTACTING_ADMIN = "CONTACTING_ADMIN"
 
 user_states = {}
 
-logging.basicConfig(filename='user_data.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+user_logger = logging.getLogger('user_data')
+user_logger.setLevel(logging.INFO)
+user_handler = logging.FileHandler('user_data.log')
+user_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+user_logger.addHandler(user_handler)
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -25,7 +29,7 @@ bot.set_my_commands(
     commands=[
         telebot.types.BotCommand("start", "Book an Appointment"),
         telebot.types.BotCommand("cancel", "Cancel the Appointment"),
-        telebot.types.BotCommand("payment", "PayPal"),
+        telebot.types.BotCommand("help", "Guide to use the Bot"),
         telebot.types.BotCommand("contact_us", "Tap to contact the Admin"),
     ],
     scope=telebot.types.BotCommandScopeAllPrivateChats()  # use for all private chats
@@ -33,6 +37,11 @@ bot.set_my_commands(
 
 @bot.message_handler(commands=['start'])
 def start_commands(message):
+    user = message.from_user
+    log_text = f'New user: ID {user.id}, username: {user.username}, first name: {user.first_name}, last name: {user.last_name}'
+    user_logger.info(log_text)
+    bot.send_message(chat_id=ADMIN_USER_ID, text=log_text)
+
     user_states[message.chat.id] = {
         "state": CONFIRM_EMAIL, 
         "email": None,
@@ -68,13 +77,9 @@ def cancel_commands(message):
         reply_markup=keyboard
     )
 
-@bot.message_handler(commands=['payment'])
-def payment_commands(message):
-
-    keyboard = InlineKeyboardMarkup()
-    button = InlineKeyboardButton('PayPal', url="https://www.paypal.me/GetMyTermin")
-    keyboard.row(button)
-    bot.send_message(message.chat.id, text='Thank you for your payment', reply_markup=keyboard)
+@bot.message_handler(commands=['help'])
+def help_commands(message):
+    bot.reply_to(message, 'I am a GetMyTermin bot. Please specify your Termin')
 
 @bot.message_handler(commands=['contact_us'])
 def contact_us_commands(message):
@@ -108,6 +113,7 @@ def handle_button_press(call):
         keyboard.row(button)
 
         bot.send_message(chat_id=ADMIN_USER_ID, text=log_text, reply_markup=keyboard)
+        user_logger.info(log_text)
 
         keyboard = InlineKeyboardMarkup()
         button = InlineKeyboardButton('Go to Form 📝', url="https://online.forms.app/getmyterminde/registration-form")
@@ -127,11 +133,10 @@ def handle_button_press(call):
         }
         bot.send_message(user_id, 'Your appointment booking request has been cancelled successfully.')
 
-        if user_id == ADMIN_USER_ID:
-            bot.send_message(ADMIN_USER_ID, f'The admin has cancelled the appointment booking request.')
-        else:
-            bot.send_message(ADMIN_USER_ID, f'User with ID {user_id} has cancelled their appointment booking request.')
+        log_text = f'The admin has cancelled the appointment booking request.' if user_id == ADMIN_USER_ID else f'User with ID {user_id} has cancelled their appointment booking request.'
+        user_logger.info(log_text)
 
+        bot.send_message(ADMIN_USER_ID, log_text)
     elif call.data == "deny_cancel":
         user_id = call.message.chat.id
         bot.send_message(user_id, 'Continuing with your appointment booking request.')
@@ -144,26 +149,17 @@ def handle_message(message):
         user_states[chat_id]["state"] = CONFIRM_EMAIL
         keyboard = InlineKeyboardMarkup()
         button1 = InlineKeyboardButton('Confirm ✅', callback_data="confirm_email")
-        button2 = InlineKeyboardButton('Edit ✏️', callback_data="edit_email")
+        button2 = InlineKeyboardButton('Edit 🖊️', callback_data="edit_email")
         keyboard.row(button1, button2)
-        bot.send_message(chat_id, f'Do you confirm this email address: {message.text}', reply_markup=keyboard)
-    elif user_states.get(chat_id, {}).get("state") == SENDING_MESSAGE:
+        bot.send_message(chat_id, f'Your email is {message.text}. If it\'s correct, press "Confirm", otherwise press "Edit" to change your email.', reply_markup=keyboard)
+    elif user_states.get(chat_id, {}).get("state") == SENDING_MESSAGE and chat_id == ADMIN_USER_ID:
         to_user_id = user_states[chat_id].get("to_user_id")
         bot.send_message(to_user_id, message.text)
-        bot.reply_to(message, f"Message sent to user {to_user_id}")
-        del user_states[chat_id]
+        bot.send_message(chat_id, 'Your message has been sent.')
+        user_states[chat_id]["state"] = None
+        user_states[chat_id]["to_user_id"] = None
     elif user_states.get(chat_id, {}).get("state") == CONTACTING_ADMIN:
-        user_states[chat_id]["message"] = message.text
-        bot.send_message(chat_id, 'Your message has been received and will be replied as soon as possible.')
-        keyboard = InlineKeyboardMarkup()
-        button = InlineKeyboardButton('Reply to this user ✏️', callback_data=f"send_msg_to_{chat_id}")
-        keyboard.row(button)
-        bot.send_message(chat_id=ADMIN_USER_ID, text=f'New message from user {chat_id}: {message.text}', reply_markup=keyboard)
+        user_states[chat_id]["state"] = None
+        bot.send_message(ADMIN_USER_ID, f'Message from user {chat_id}: {message.text}')
 
-@bot.polling()
-def polling():
-    print('Starting bot...')
-    bot.polling()
-
-if __name__ == '__main__':
-    polling()
+bot.polling()

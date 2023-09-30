@@ -175,5 +175,13 @@ def handle_message(message):
         keyboard.row(button)
         bot.send_message(ADMIN_USER_ID, f'User with ID {chat_id} sent this message:\n\n{message.text}', reply_markup=keyboard)
         bot.send_message(chat_id, 'Your message has been received and will be replied as soon as possible.')
+    else:  # This is where we handle unrecognizable messages
+        bot.send_message(chat_id, "This message is not recognizable. To communicate with the admin, please select the /contact_us option from the bot's menu.")
+        
+        user = message.chat
+        log_text = f'Unrecognized message from User {user.id}, first name: {user.first_name}, last name: {user.last_name}, username: {user.username}, message: {message.text}'
+
+        # Log the unrecognized message to 'user_data.log'
+        logging.info(log_text)
 
 bot.polling(none_stop=True, interval=0, timeout=20)
